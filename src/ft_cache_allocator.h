@@ -13,9 +13,10 @@
 #include "ft_free_list.h"
 
 namespace ftmalloc
-{
+{    
     class CCacheAllocator : public IMemAlloc
     {
+        friend class CReleaseHelper;
     public:
         CCacheAllocator();
         virtual ~CCacheAllocator();
@@ -25,6 +26,9 @@ namespace ftmalloc
         virtual void * Calloc(size_t, size_t);
         virtual void Free(void *);
 
+    protected:
+        void FreeDirect(size_t clazz, void * ptr);
+        
     private:
         void * SmallAlloc(size_t bytes);
         void * PageAlloc(size_t bytes);
@@ -42,6 +46,23 @@ namespace ftmalloc
         size_t m_llUsedSize;
         size_t m_llAllocPages;
     };
+
+#if 0
+    template<size_t objaddr = 0, size_t clazz = -1>
+    class CReleaseHelper
+    {
+    public:
+        void Release(void * addr)
+        {
+            if (objaddr == 0) {
+                return;
+            }
+            
+            CCacheAllocator * allocator = (CCacheAllocator *)objaddr;
+            allocator->FreeDirect(clazz, addr);
+        }
+    };
+#endif
 }
 
 #endif

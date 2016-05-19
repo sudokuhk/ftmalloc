@@ -14,24 +14,41 @@
 
 namespace ftmalloc
 {
-#define MEM_INFO_TYPE                   int
-#define MEM_INFO_LENGTH                 (sizeof(MEM_INFO_TYPE))//align.
+#define MEM_INFO_TYPE                   size_t
+#define MEM_INFO_BYTES                  (sizeof(MEM_INFO_TYPE))//align.
+#define MEM_INFO_BITS                   (MEM_INFO_BYTES * 8)
+#define RESERVE_BITS                    (8)
+#define REAL_INFO_BITS                  (MEM_INFO_BITS - RESERVE_BITS)
+#define PAGE_FLAG_BIT                   (MEM_INFO_BITS - 1)
 
-#define ALLOC_BYTE_INFONUM              (1)
-#define ALLOC_PAGE_INFONUM              (2)
+#define GET_MEM_INFO(mem)               (*((MEM_INFO_TYPE *)(((size_t)(mem) - MEM_INFO_BYTES))))
+#define SET_MEM_INFO(mem, clz, pc)                              \
+    do {                                                        \
+        size_t info = clz;                                      \
+        if (pc > 0) {                                           \
+            info = pc | ((size_t)1 << PAGE_FLAG_BIT);           \
+        }                                                       \
+        (*((MEM_INFO_TYPE *)(mem))) = (info);                   \
+    } while (0)
 
-#define GET_MEM_INFO(mem)               (*((MEM_INFO_TYPE *)(((size_t)(mem) - MEM_INFO_LENGTH))))
-#define SET_MEM_INFO(mem, info)         do { (*((MEM_INFO_TYPE *)(mem))) = (info); } while (0)
 
-#define RETURN_MEM_ADDR(mem)            ((void *)(((size_t)(mem)) + MEM_INFO_LENGTH))
-#define GET_MEM_ADDR(mem)               ((void *)(((size_t)(mem)) - MEM_INFO_LENGTH))
-#define GET_ALLOC_LENGTH(size, infonum) ((size) + infonum * (MEM_INFO_LENGTH))
-#define IS_BIG_MEM_ALLOC(size)          (GET_ALLOC_LENGTH(size, ALLOC_BYTE_INFONUM))
+#define SET_CLAZZ(mem, clz)             SET_MEM_INFO(mem, clz, 0)
+#define SET_PAGECOUNT(mem, pgc)         SET_MEM_INFO(mem, 0, pgc)
+#define GET_PAGE_ALLOC_BIT(info)        ((info) & ((MEM_INFO_TYPE)1 << PAGE_FLAG_BIT))
+#define IS_PAGE_ALLOC(mem)              (GET_PAGE_ALLOC_BIT(GET_MEM_INFO(mem)) != 0)
+#define GET_PAGE_COUNT(mem)             (GET_MEM_INFO(mem) & ((((MEM_INFO_TYPE)1) << PAGE_FLAG_BIT) - 1))
+#define GET_CLAZZ(mem)                  (GET_MEM_INFO(mem))
 
-#define GET_DATASIZE_BY_PAGE(pages)     (((pages) << FT_PAGE_BIT) - (ALLOC_PAGE_INFONUM * MEM_INFO_LENGTH))
-#define GET_DATASIZE_BY_BYTE(bytes)     ((bytes) - (ALLOC_BYTE_INFONUM * MEM_INFO_LENGTH))
+#define RETURN_MEM_ADDR(mem)            ((void *)(((size_t)(mem)) + MEM_INFO_BYTES))
+#define GET_MEM_ADDR(mem)               ((void *)(((size_t)(mem)) - MEM_INFO_BYTES))
 
-#define PAGE_CLAZZ                      (-1)
+#define GET_NEED_LENGTH(size)           ((size) + (MEM_INFO_BYTES))
+#define GET_ALLOC_LENGTH(mem)                                       \
+        (IS_PAGE_ALLOC(mem) ?                                       \
+            (((MEM_INFO_TYPE)GET_PAGE_COUNT(mem)) << FT_PAGE_BIT) : \
+            CSizeMap::GetInstance().class_to_size(GET_CLAZZ(mem)))
+
+//#ifndef FT_FREE_USE_CALLBACK
 
     CCacheAllocator::CCacheAllocator()
         : m_cFreeList()
@@ -61,8 +78,9 @@ namespace ftmalloc
         if (bytes == 0) {
             return addr;
         }
-        
-        if (IS_BIG_MEM_ALLOC(bytes) >= kMaxSize) {
+
+        FT_LOG(FT_DEBUG, "need alloc length:%zd", GET_NEED_LENGTH(bytes));
+        if (GET_NEED_LENGTH(bytes) >= kMaxSize) {
             addr = PageAlloc(bytes);
         } else {
             addr = SmallAlloc(bytes);
@@ -80,17 +98,9 @@ namespace ftmalloc
         } else if (bytes == 0) {
             addr = NULL;
         } else {
-            size_t clazz    = GET_MEM_INFO(oldptr);
             void * realAddr = GET_MEM_ADDR(oldptr);
             size_t oldsize  = 0;
-
-            if (clazz == PAGE_CLAZZ) {
-                size_t pages    = GET_MEM_INFO(realAddr);
-                realAddr        = GET_MEM_ADDR(realAddr);
-                oldsize         = GET_DATASIZE_BY_PAGE(pages);
-            } else {
-                oldsize = GET_DATASIZE_BY_BYTE(CSizeMap::GetInstance().class_to_size(clazz));
-            }
+            size_t old_size = GET_ALLOC_LENGTH(oldptr);
 
             if (bytes > oldsize) {
                 void * addr = Malloc(bytes);
@@ -128,16 +138,24 @@ namespace ftmalloc
             return;
         }
 
-        size_t clazz = GET_MEM_INFO(ptr);
         size_t freeSize = 0;
         
         void * realAddr = GET_MEM_ADDR(ptr);
-        FT_LOG(FT_DEBUG, "Get clazz info from memory:%zd, addr:%p, real:%p", clazz, ptr, realAddr);
+        FT_LOG(FT_DEBUG, "Get clazz info from memory:addr:%p, real:%p", ptr, realAddr);
+        FT_LOG(FT_DEBUG, "info:%lx", *(size_t *)realAddr);
 
-        if (clazz != PAGE_CLAZZ) {
+        if (IS_PAGE_ALLOC(ptr)) {
+            size_t pages = GET_PAGE_COUNT(ptr);
+            FT_LOG(FT_DEBUG, "free pages:%p, pages:%zd", realAddr, pages);
+            
+            freeSize = pages << FT_PAGE_BIT;
+            CCentralCacheMgr::GetInstance().FreePages(realAddr, pages);
+        } else {
+            size_t clazz = GET_CLAZZ(ptr);
             freeSize = CSizeMap::GetInstance().class_to_size(clazz);
             CFreeList & list = m_cFreeList[clazz];
             list.Push(realAddr);
+            FT_LOG(FT_DEBUG, "free slices:%p, clazz:%zd", realAddr, clazz);
 
             FT_LOG(FT_DEBUG, "clazz:%zd, length:%zd, max_length:%zd!", clazz, list.length(), list.max_length());
             
@@ -145,20 +163,19 @@ namespace ftmalloc
                 list.set_max_length(list.max_length() >> 1);
                 ReleaseToCentral(clazz, list.length() - list.max_length());
             }
-        } else {
-            size_t pages = GET_MEM_INFO(realAddr);
-            realAddr = GET_MEM_ADDR(realAddr);
-            freeSize = pages << FT_PAGE_BIT;
-
-            CCentralCacheMgr::GetInstance().FreePages(realAddr, pages);
         }
     }
 
-    void * CCacheAllocator::SmallAlloc(size_t bytes)
+    void CCacheAllocator::FreeDirect(size_t clazz, void * ptr)
     {
+    }
+
+    void * CCacheAllocator::SmallAlloc(size_t bytes)
+    {   
+        FT_LOG(FT_DEBUG, "SmallAlloc, want size:%zd", bytes);
         CSizeMap sizemap    = CSizeMap::GetInstance();
 
-        size_t allocSize    = GET_ALLOC_LENGTH(bytes, ALLOC_BYTE_INFONUM);
+        size_t allocSize    = GET_NEED_LENGTH(bytes);
         size_t cl           = sizemap.SizeClass(allocSize);
         size_t size         = sizemap.class_to_size(cl);
 
@@ -176,7 +193,7 @@ namespace ftmalloc
         FT_LOG(FT_DEBUG, "object addr:%p", allocAddr);
         
         m_llUsedSize += size;
-        SET_MEM_INFO(allocAddr, cl);
+        SET_CLAZZ(allocAddr, cl);
 
         void * retAddr = RETURN_MEM_ADDR(allocAddr);
         FT_LOG(FT_DEBUG, "return addr:%p", retAddr);
@@ -186,7 +203,7 @@ namespace ftmalloc
     
     void * CCacheAllocator::PageAlloc(size_t bytes)
     {
-        size_t allocSize = GET_ALLOC_LENGTH(bytes, ALLOC_PAGE_INFONUM);
+        size_t allocSize = GET_NEED_LENGTH(bytes);
         size_t needPages = (allocSize >> FT_PAGE_BIT) + ((allocSize & (FT_PAGE_BIT - 1)) > 0 ? 1 : 0);
 
         FT_LOG(FT_DEBUG, "want size:%zd, realsize:%zd, pages:%zd", bytes, allocSize, needPages);
@@ -198,10 +215,7 @@ namespace ftmalloc
 
         void * retAddr = allocAddr;
 
-        SET_MEM_INFO(retAddr, needPages);
-        retAddr = RETURN_MEM_ADDR(retAddr);
-
-        SET_MEM_INFO(retAddr, PAGE_CLAZZ);
+        SET_PAGECOUNT(retAddr, needPages);
         retAddr = RETURN_MEM_ADDR(retAddr);
 
         FT_LOG(FT_DEBUG, "return addr:%p", retAddr);

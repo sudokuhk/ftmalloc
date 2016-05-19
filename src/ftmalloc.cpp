@@ -34,6 +34,14 @@ extern "C"
     
     void   ft_free(void* ptr) __THROW
     {
+        /*
+         * I found that call pthread_join, will free TCB after tls_decontructor.
+         * It will recreate tls-allocator again.
+         */
+        if (ptr == NULL) {
+            return;
+        }
+        
         ftmalloc::__Free(ptr);
     }
     
@@ -75,6 +83,42 @@ extern "C"
     }
     
     int    ft_mallopt(int cmd, int value) __THROW
+    {
+    }
+
+    int    ft_set_new_mode(int flag) __THROW
+    {
+    }
+
+    void * ft_new(size_t size)
+    {
+    }
+
+    void * ft_new_nothrow(size_t size, const std::nothrow_t&) __THROW
+    {
+    }
+
+    void   ft_delete(void* p) __THROW
+    {
+    }
+
+    void   ft_delete_nothrow(void* p, const std::nothrow_t&) __THROW
+    {
+    }
+
+    void * ft_newarray(size_t size)
+    {
+    }
+
+    void * ft_newarray_nothrow(size_t size, const std::nothrow_t&) __THROW
+    {
+    }
+
+    void   ft_deletearray(void* p) __THROW
+    {
+    }
+
+    void   ft_deletearray_nothrow(void* p, const std::nothrow_t&) __THROW
     {
     }
 

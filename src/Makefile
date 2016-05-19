@@ -4,7 +4,7 @@ SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o, $(SOURCES))
 INC_DIR = $(shell pwd)
 LIBRARYS= -pthread
-MACROS = -DC_STRING_FUNC -DLOG_PRINTF -DFT_LOG_ERROR
+MACROS = -DC_STRING_FUNC -DLOG_PRINTF -DFT_LOG_DEBUG
 SHARED = -shared -fPIC
 
 all : $(TARGET)

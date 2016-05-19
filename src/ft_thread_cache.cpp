@@ -20,6 +20,7 @@ namespace ftmalloc
         if (pAllcator != NULL) {
         	IMemAlloc::DestroyMemAllocator(pAllcator);
         }
+        FT_LOG(FT_INFO, "obj:%p, end!", object);
     }
     
     CThreadCache CThreadCache::sInstance;
