@@ -52,6 +52,7 @@ namespace ftmalloc
         if (!bInit) {
             bInit = true;
             sInstance.Init();
+            sInstance.print();
         }
         
         return sInstance;
@@ -176,7 +177,7 @@ namespace ftmalloc
     {
         size_t length = sizeof(class_to_size_) / sizeof(class_to_size_[0]);
         for (size_t i = 0; i < length; i++) {
-            FT_LOG(FT_DEBUG, "class_to_size_[%zd] = %zd, class_to_pages_[%zd] = %zd, number:%d\n",
+            FT_LOG(FT_DEBUG, "class_to_size_[%zd] = %zd, class_to_pages_[%zd] = %zd, number:%d",
                 i, class_to_size_[i], i, class_to_pages_[i], num_objects_to_move_[i]);
         }
     }

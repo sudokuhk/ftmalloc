@@ -9,14 +9,15 @@ DEP_OBJECTS = $(patsubst %.cpp, %.o, $(DEP_SOURCES))
 
 INC_PATH = $(shell pwd)
 LIB_PATH = $(shell pwd)
-LIBRARYS= -pthread 
+LIBRARYS= -pthread -lftmalloc
+#LIBRARYS= -pthread -ltcmalloc
 
 MACROS = -DC_STRING_FUNC -DLOG_PRINTF -DFT_LOG_DEBUG
 SHARED = #-shared -fPIC
 CPPFLAGS += -g -O0 -Wno-deprecated -Wnonnull 
 
 INC_PATH += ../src
-LIB_PATH += ../src
+LIB_PATH += ../src /usr/lib/
 
 INC_DIR = $(patsubst %, -I%, $(INC_PATH))
 LIB_DIR = $(patsubst %, -L%, $(LIB_PATH))

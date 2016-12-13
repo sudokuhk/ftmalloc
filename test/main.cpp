@@ -63,6 +63,9 @@ void * thread_func(void * args)
 
 int main()
 {
+    char * byte = (char *)malloc(1);
+    free(byte);
+    
     pthread_t pt;
     pthread_create(&pt, NULL, thread_func, NULL);
     pthread_join(pt, NULL);

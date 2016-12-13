@@ -152,6 +152,10 @@ namespace ftmalloc
             CCentralCacheMgr::GetInstance().FreePages(realAddr, pages);
         } else {
             size_t clazz = GET_CLAZZ(ptr);
+            if (clazz <= 0 || clazz >= kNumClasses) {
+                return;
+            }
+            
             freeSize = CSizeMap::GetInstance().class_to_size(clazz);
             CFreeList & list = m_cFreeList[clazz];
             list.Push(realAddr);
@@ -269,6 +273,7 @@ namespace ftmalloc
 
         m_llAllocSize -= N * node_size;
 
+        FT_LOG(FT_DEBUG, "clz:%zd, N:%ld, batchsize:%ld", clazz, N, batch_size);
         while (N > batch_size) {
             void *tail, *head;
             list.PopRange(batch_size, &head, &tail);
@@ -276,6 +281,7 @@ namespace ftmalloc
             N -= batch_size;
         }
 
+        FT_LOG(FT_DEBUG, "clz:%zd, N:%ld, batchsize:%ld", clazz, N, batch_size);
         void * start, *end;
         list.PopRange(N, &start, &end);
         CCentralCacheMgr::GetInstance().InsertRange(clazz, start, end, N);

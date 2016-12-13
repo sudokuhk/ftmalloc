@@ -32,6 +32,8 @@ namespace ftmalloc
     void __Free(void * ptr)
     {
         IMemAlloc * allocator = CThreadCache::GetInstance().GetAllocator();
-        return allocator->Free(ptr);
+        if (allocator != NULL) {
+            allocator->Free(ptr);
+        }
     }
 }
